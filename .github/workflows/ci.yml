@@ -1,4 +1,4 @@
-name: CI/CD Pipeline
+name: CI/CD Pipeline with Extra Challenges
 
 on:
   push:
@@ -30,6 +30,13 @@ jobs:
     strategy:
       matrix:
         node-version: [16, 18, 20]
+        include:
+          - node-version: current
+            when: ${{ github.event_name == 'schedule' }}
+    # Only run current version for scheduled events
+    if: |
+      (github.event_name != 'schedule' && matrix.node-version != 'current') ||
+      (github.event_name == 'schedule' && matrix.node-version == 'current')
     
     steps:
     - name: Checkout code
@@ -45,7 +52,7 @@ jobs:
       run: npm ci
 
     - name: Run tests with Jest
-      run: npm test
+      run: npm test -- --json --outputFile=test-results/${{ matrix.node-version }}/results.json
       env:
         CI: true
 
@@ -53,11 +60,11 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: test-results-${{ matrix.node-version }}
-        path: test-results/
+        path: test-results/${{ matrix.node-version }}/
         retention-days: 7
 
   test-summary:
-    name: Test Summary
+    name: Test Summary & Validation
     runs-on: ubuntu-latest
     needs: test
     if: always()
@@ -70,25 +77,67 @@ jobs:
         pattern: test-results-*
         merge-multiple: true
 
-    - name: Generate test summary
+    - name: Generate comprehensive test summary
       run: |
-        echo "# Test Results Summary" > test-summary.md
+        echo "# 🧪 Test Results Summary" > test-summary.md
         echo "Generated on $(date)" >> test-summary.md
         echo "" >> test-summary.md
-        echo "## Test Results for All Node.js Versions" >> test-summary.md
-        echo "" >> test-summary.md
-        echo "| Node Version | Test Suite | Passed | Failed | Skipped |" >> test-summary.md
-        echo "|--------------|------------|--------|--------|---------|" >> test-summary.md
         
-        # Extract results from Jest test results
-        for version in 16 18 20; do
-          if [ -f "all-test-results/jest-results.json" ]; then
-            # This is a simplified example - in real scenario you would parse the actual results
-            echo "| $version | Calculator Tests | 5 | 0 | 0 |" >> test-summary.md
+        total_tests=0
+        total_passed=0
+        total_failed=0
+        
+        echo "## Detailed Results by Node.js Version" >> test-summary.md
+        echo "" >> test-summary.md
+        echo "| Node Version | Total Tests | Passed | Failed | Status |" >> test-summary.md
+        echo "|--------------|-------------|--------|--------|--------|" >> test-summary.md
+        
+        # Process each version's test results
+        for version in 16 18 20 current; do
+          result_file="all-test-results/test-results/$version/results.json"
+          if [ -f "$result_file" ]; then
+            tests=$(jq '.numTotalTests' "$result_file")
+            passed=$(jq '.numPassedTests' "$result_file")
+            failed=$(jq '.numFailedTests' "$result_file")
+            
+            total_tests=$((total_tests + tests))
+            total_passed=$((total_passed + passed))
+            total_failed=$((total_failed + failed))
+            
+            if [ "$failed" -eq 0 ]; then
+              status="✅ PASSED"
+            else
+              status="❌ FAILED"
+            fi
+            
+            echo "| $version | $tests | $passed | $failed | $status |" >> test-summary.md
           else
-            echo "| $version | No results found | 0 | 0 | 0 |" >> test-summary.md
+            echo "| $version | 0 | 0 | 0 | ⚠️ NO DATA |" >> test-summary.md
           fi
         done
+        
+        echo "" >> test-summary.md
+        echo "## 📊 Overall Summary" >> test-summary.md
+        echo "" >> test-summary.md
+        echo "| Metric | Count |" >> test-summary.md
+        echo "|--------|-------|" >> test-summary.md
+        echo "| Total Tests | $total_tests |" >> test-summary.md
+        echo "| Passed | $total_passed |" >> test-summary.md
+        echo "| Failed | $total_failed |" >> test-summary.md
+        echo "| Success Rate | $((total_passed * 100 / total_tests))% |" >> test-summary.md
+        
+        # Save total tests for comparison
+        echo "TOTAL_TESTS=$total_tests" >> $GITHUB_ENV
+
+    - name: Validate minimum test count
+      run: |
+        # This is a simplified version - in real scenario, you'd compare with previous runs
+        if [ "$TOTAL_TESTS" -lt 5 ]; then
+          echo "❌ ERROR: Minimum test count not met. Expected at least 5 tests, found $TOTAL_TESTS"
+          exit 1
+        else
+          echo "✅ SUCCESS: Minimum test count met ($TOTAL_TESTS tests)"
+        fi
 
     - name: Upload test summary
       uses: actions/upload-artifact@v4
@@ -100,6 +149,7 @@ jobs:
     name: Build
     runs-on: ubuntu-latest
     needs: test
+    # Conditional build with skip option from workflow_dispatch
     if: |
       (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')) &&
       needs.test.result == 'success' &&
@@ -121,9 +171,6 @@ jobs:
     - name: Build project
       run: npm run build
 
-    - name: List build contents
-      run: ls -la dist/
-
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
       with:
@@ -140,10 +187,10 @@ jobs:
     steps:
     - name: Wait for manual approval
       run: |
-        echo "Manual approval required before publishing"
-        echo "This is a simulation - in real scenario, use trstringer/manual-approval action"
-        echo "Approval granted for workflow: ${{ github.workflow }}"
-        sleep 5
+        echo "⏳ Manual approval required before publishing"
+        echo "This simulation pauses for 10 seconds to represent manual approval"
+        sleep 10
+        echo "✅ Approval granted - proceeding to publish"
 
   publish:
     name: Publish
@@ -158,12 +205,8 @@ jobs:
         name: dist
         path: dist/
 
-    - name: Display build contents
-      run: ls -la dist/
-
     - name: Simulate publishing
       run: |
-        echo "🚀 Publishing application version 1.0.0"
-        echo "📦 Build contents:"
-        cat dist/build-info.txt
-        echo "✅ Publishing completed successfully!"
+        echo "🚀 Publishing application"
+        echo "📦 Build contents deployed successfully!"
+        echo "✅ Publication completed at $(date)"
