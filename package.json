@@ -1,0 +1,22 @@
+{
+  "name": "matrix-testing-project",
+  "version": "1.0.0",
+  "description": "Assignment 2: Matrix Testing & Conditional Build",
+  "main": "src/index.js",
+  "scripts": {
+    "test": "jest --testResultsDir=./test-results",
+    "build": "mkdir -p dist && cp -r src/* dist/ && echo 'Build completed!' > dist/build-info.txt"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "directories": {
+    "test": "test"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC"
+}
