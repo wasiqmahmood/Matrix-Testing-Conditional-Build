@@ -16,8 +16,6 @@ on:
         options:
         - 'true'
         - 'false'
-  schedule:
-    - cron: '0 2 * * *'  # Nightly at 2 AM
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -35,7 +33,7 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
 
-    - name: Setup Node.js ${{ matrix.node-version }}
+    - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
         node-version: ${{ matrix.node-version }}
@@ -44,57 +42,10 @@ jobs:
     - name: Install dependencies
       run: npm ci
 
-    - name: Run tests with Jest
+    - name: Run tests
       run: npm test
       env:
         CI: true
-
-    - name: Upload test results
-      uses: actions/upload-artifact@v4
-      with:
-        name: test-results-${{ matrix.node-version }}
-        path: test-results/
-        retention-days: 7
-
-  test-summary:
-    name: Test Summary
-    runs-on: ubuntu-latest
-    needs: test
-    if: always()
-    
-    steps:
-    - name: Download all test results
-      uses: actions/download-artifact@v4
-      with:
-        path: all-test-results
-        pattern: test-results-*
-        merge-multiple: true
-
-    - name: Generate test summary
-      run: |
-        echo "# Test Results Summary" > test-summary.md
-        echo "Generated on $(date)" >> test-summary.md
-        echo "" >> test-summary.md
-        echo "## Test Results for All Node.js Versions" >> test-summary.md
-        echo "" >> test-summary.md
-        echo "| Node Version | Test Suite | Passed | Failed | Skipped |" >> test-summary.md
-        echo "|--------------|------------|--------|--------|---------|" >> test-summary.md
-        
-        # Extract results from Jest test results
-        for version in 16 18 20; do
-          if [ -f "all-test-results/jest-results.json" ]; then
-            # This is a simplified example - in real scenario you would parse the actual results
-            echo "| $version | Calculator Tests | 5 | 0 | 0 |" >> test-summary.md
-          else
-            echo "| $version | No results found | 0 | 0 | 0 |" >> test-summary.md
-          fi
-        done
-
-    - name: Upload test summary
-      uses: actions/upload-artifact@v4
-      with:
-        name: test-summary
-        path: test-summary.md
 
   build:
     name: Build
@@ -121,9 +72,6 @@ jobs:
     - name: Build project
       run: npm run build
 
-    - name: List build contents
-      run: ls -la dist/
-
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
       with:
@@ -131,25 +79,11 @@ jobs:
         path: dist/
         retention-days: 30
 
-  approval:
-    name: Manual Approval
-    runs-on: ubuntu-latest
-    needs: build
-    if: github.ref == 'refs/heads/main' && needs.build.result == 'success'
-    
-    steps:
-    - name: Wait for manual approval
-      run: |
-        echo "Manual approval required before publishing"
-        echo "This is a simulation - in real scenario, use trstringer/manual-approval action"
-        echo "Approval granted for workflow: ${{ github.workflow }}"
-        sleep 5
-
   publish:
     name: Publish
     runs-on: ubuntu-latest
-    needs: approval
-    if: github.ref == 'refs/heads/main' && needs.approval.result == 'success'
+    needs: build
+    if: github.ref == 'refs/heads/main' && needs.build.result == 'success'
     
     steps:
     - name: Download build artifacts
@@ -158,12 +92,8 @@ jobs:
         name: dist
         path: dist/
 
-    - name: Display build contents
-      run: ls -la dist/
-
-    - name: Simulate publishing
+    - name: Publish application
       run: |
-        echo "🚀 Publishing application version 1.0.0"
-        echo "📦 Build contents:"
-        cat dist/build-info.txt
+        echo "🚀 Publishing application"
+        # Add your actual publishing commands here
         echo "✅ Publishing completed successfully!"
